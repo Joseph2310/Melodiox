@@ -1,0 +1,1 @@
+- add "all rights for lyrics perserved for tasbehna.com"
