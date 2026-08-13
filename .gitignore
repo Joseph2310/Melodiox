@@ -38,6 +38,9 @@ migrate_working_dir/
 work_space/
 *.apk
 *.aab
+!releases/
+!releases/*.apk
+!releases/*.sha256
 
 # Symbolication related
 app.*.symbols
