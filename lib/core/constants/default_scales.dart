@@ -21,20 +21,10 @@ class DefaultScaleCatalog {
   }
 
   static List<String> _scaleNotes(String root, String type) {
-    final intervals = switch (type) {
-      'Minor' => const [0, 2, 3, 5, 7, 8, 10],
-      _ => const [0, 2, 4, 5, 7, 9, 11],
+    return switch (type) {
+      'Minor' => _minorScaleNotes[root] ?? _minorScaleNotes['C']!,
+      _ => _majorScaleNotes[root] ?? _majorScaleNotes['C']!,
     };
-    final chromatic =
-        _preferFlats(root, type) ? _flatChromatic : _sharpChromatic;
-    final rootIndex = chromatic.indexOf(root);
-    final effectiveRootIndex =
-        rootIndex >= 0 ? rootIndex : _sharpChromatic.indexOf(root);
-    return [
-      for (final interval in intervals)
-        chromatic[(effectiveRootIndex + interval) % chromatic.length],
-      chromatic[effectiveRootIndex % chromatic.length],
-    ];
   }
 
   static String _formula(String type) {
@@ -69,48 +59,45 @@ class DefaultScaleCatalog {
     };
   }
 
-  static bool _preferFlats(String root, String type) {
-    if (root.contains('b')) {
-      return true;
-    }
-    if (root.contains('#')) {
-      return false;
-    }
-    return switch (type) {
-      'Minor' => const ['D', 'G', 'C', 'F'].contains(root),
-      _ => root == 'F',
-    };
-  }
+  static const _majorScaleNotes = <String, List<String>>{
+    'C': ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C'],
+    'C#': ['C#', 'D#', 'E#', 'F#', 'G#', 'A#', 'B#', 'C#'],
+    'Db': ['Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb', 'C', 'Db'],
+    'D': ['D', 'E', 'F#', 'G', 'A', 'B', 'C#', 'D'],
+    'D#': ['D#', 'E#', 'F##', 'G#', 'A#', 'B#', 'C##', 'D#'],
+    'Eb': ['Eb', 'F', 'G', 'Ab', 'Bb', 'C', 'D', 'Eb'],
+    'E': ['E', 'F#', 'G#', 'A', 'B', 'C#', 'D#', 'E'],
+    'F': ['F', 'G', 'A', 'Bb', 'C', 'D', 'E', 'F'],
+    'F#': ['F#', 'G#', 'A#', 'B', 'C#', 'D#', 'E#', 'F#'],
+    'Gb': ['Gb', 'Ab', 'Bb', 'Cb', 'Db', 'Eb', 'F', 'Gb'],
+    'G': ['G', 'A', 'B', 'C', 'D', 'E', 'F#', 'G'],
+    'G#': ['G#', 'A#', 'B#', 'C#', 'D#', 'E#', 'F##', 'G#'],
+    'Ab': ['Ab', 'Bb', 'C', 'Db', 'Eb', 'F', 'G', 'Ab'],
+    'A': ['A', 'B', 'C#', 'D', 'E', 'F#', 'G#', 'A'],
+    'A#': ['A#', 'B#', 'C##', 'D#', 'E#', 'F##', 'G##', 'A#'],
+    'Bb': ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A', 'Bb'],
+    'B': ['B', 'C#', 'D#', 'E', 'F#', 'G#', 'A#', 'B'],
+  };
 
-  static const _sharpChromatic = <String>[
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
-  ];
-
-  static const _flatChromatic = <String>[
-    'C',
-    'Db',
-    'D',
-    'Eb',
-    'E',
-    'F',
-    'Gb',
-    'G',
-    'Ab',
-    'A',
-    'Bb',
-    'B',
-  ];
+  static const _minorScaleNotes = <String, List<String>>{
+    'C': ['C', 'D', 'Eb', 'F', 'G', 'Ab', 'Bb', 'C'],
+    'C#': ['C#', 'D#', 'E', 'F#', 'G#', 'A', 'B', 'C#'],
+    'Db': ['Db', 'Eb', 'Fb', 'Gb', 'Ab', 'Bbb', 'Cb', 'Db'],
+    'D': ['D', 'E', 'F', 'G', 'A', 'Bb', 'C', 'D'],
+    'D#': ['D#', 'E#', 'F#', 'G#', 'A#', 'B', 'C#', 'D#'],
+    'Eb': ['Eb', 'F', 'Gb', 'Ab', 'Bb', 'Cb', 'Db', 'Eb'],
+    'E': ['E', 'F#', 'G', 'A', 'B', 'C', 'D', 'E'],
+    'F': ['F', 'G', 'Ab', 'Bb', 'C', 'Db', 'Eb', 'F'],
+    'F#': ['F#', 'G#', 'A', 'B', 'C#', 'D', 'E', 'F#'],
+    'Gb': ['Gb', 'Ab', 'Bbb', 'Cb', 'Db', 'Ebb', 'Fb', 'Gb'],
+    'G': ['G', 'A', 'Bb', 'C', 'D', 'Eb', 'F', 'G'],
+    'G#': ['G#', 'A#', 'B', 'C#', 'D#', 'E', 'F#', 'G#'],
+    'Ab': ['Ab', 'Bb', 'Cb', 'Db', 'Eb', 'Fb', 'Gb', 'Ab'],
+    'A': ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'A'],
+    'A#': ['A#', 'B#', 'C#', 'D#', 'E#', 'F#', 'G#', 'A#'],
+    'Bb': ['Bb', 'C', 'Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb'],
+    'B': ['B', 'C#', 'D', 'E', 'F#', 'G', 'A', 'B'],
+  };
 }
 
 class DefaultScaleDefinition {

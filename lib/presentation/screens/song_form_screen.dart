@@ -10,6 +10,7 @@ import '../../core/utils/song_validation.dart';
 import '../../domain/entities/chord_tutorial.dart';
 import '../../domain/entities/lyrics_library_entry.dart';
 import '../../domain/entities/media_item.dart';
+import '../../domain/entities/musical_scale.dart';
 import '../../domain/entities/rhythm.dart';
 import '../../domain/entities/rhythm_item.dart';
 import '../../domain/entities/song.dart';
@@ -38,7 +39,6 @@ class _SongFormScreenState extends State<SongFormScreen> {
 
   late final TextEditingController _nameController;
   late final TextEditingController _transposeController;
-  late final TextEditingController _bpmController;
   late final TextEditingController _lyricsController;
 
   late String _myStartingKey;
@@ -65,7 +65,6 @@ class _SongFormScreenState extends State<SongFormScreen> {
     _transposeController = TextEditingController(
       text: _formatSignedInt(song?.transposeValue ?? 0),
     );
-    _bpmController = TextEditingController(text: song?.bpm?.toString() ?? '');
     _lyricsController = TextEditingController(text: song?.lyrics ?? '');
     _myStartingKey = song?.myStartingKey ?? MusicKeys.values.first;
     _originalScale = song?.originalScale;
@@ -88,7 +87,6 @@ class _SongFormScreenState extends State<SongFormScreen> {
   void dispose() {
     _nameController.dispose();
     _transposeController.dispose();
-    _bpmController.dispose();
     _lyricsController.dispose();
     super.dispose();
   }
@@ -247,7 +245,6 @@ class _SongFormScreenState extends State<SongFormScreen> {
               myScale: _myScale,
               scaleValues: scaleValues,
               originalStartingKey: _originalStartingKey,
-              bpmController: _bpmController,
               onOriginalScaleChanged: (value) =>
                   setState(() => _originalScale = value),
               onMyScaleChanged: (value) => setState(() => _myScale = value),
@@ -269,6 +266,9 @@ class _SongFormScreenState extends State<SongFormScreen> {
             const SizedBox(height: 12),
             _SongChordItemsEditor(
               availableChords: library.chordTutorials,
+              availableScales: library.scales,
+              originalScale: _originalScale,
+              myScale: _myScale,
               chordItems: _chordItems,
               onChanged: (items) => setState(() => _chordItems = items),
               onPickImage: _pickChordImage,
@@ -621,7 +621,7 @@ class _SongFormScreenState extends State<SongFormScreen> {
       originalScale: _originalScale,
       myScale: _myScale,
       originalStartingKey: _originalStartingKey,
-      bpm: int.tryParse(_bpmController.text.trim()),
+      bpm: rhythmItems.isEmpty ? existing?.bpm : rhythmItems.first.bpm,
       lyrics: _blankToNull(_lyricsController.text),
       notes: _blankToNull(
         noteItems.map((note) => note.body.trim()).join('\n\n'),
@@ -778,12 +778,18 @@ class _QuarterTonePicker extends StatelessWidget {
 class _SongChordItemsEditor extends StatelessWidget {
   const _SongChordItemsEditor({
     required this.availableChords,
+    required this.availableScales,
+    required this.originalScale,
+    required this.myScale,
     required this.chordItems,
     required this.onChanged,
     required this.onPickImage,
   });
 
   final List<ChordTutorial> availableChords;
+  final List<MusicalScale> availableScales;
+  final String? originalScale;
+  final String? myScale;
   final List<SongChordItem> chordItems;
   final ValueChanged<List<SongChordItem>> onChanged;
   final Future<MediaItem?> Function() onPickImage;
@@ -868,6 +874,9 @@ class _SongChordItemsEditor extends StatelessWidget {
       context: context,
       builder: (context) => _SongChordItemDialog(
         availableChords: availableChords,
+        availableScales: availableScales,
+        originalScale: originalScale,
+        myScale: myScale,
         item: index == null ? null : chordItems[index],
         onPickImage: onPickImage,
       ),
@@ -894,11 +903,17 @@ class _SongChordItemsEditor extends StatelessWidget {
 class _SongChordItemDialog extends StatefulWidget {
   const _SongChordItemDialog({
     required this.availableChords,
+    required this.availableScales,
+    required this.originalScale,
+    required this.myScale,
     required this.onPickImage,
     this.item,
   });
 
   final List<ChordTutorial> availableChords;
+  final List<MusicalScale> availableScales;
+  final String? originalScale;
+  final String? myScale;
   final SongChordItem? item;
   final Future<MediaItem?> Function() onPickImage;
 
@@ -912,6 +927,8 @@ class _SongChordItemDialogState extends State<_SongChordItemDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final originalScale = _scaleFor(widget.originalScale);
+    final myScale = _scaleFor(widget.myScale);
     return AlertDialog(
       title: Text(context.t('Chord Item')),
       content: SizedBox(
@@ -932,6 +949,20 @@ class _SongChordItemDialogState extends State<_SongChordItemDialog> {
                   onPressed: _addImage,
                   icon: const Icon(Icons.image_outlined),
                   label: Text(context.t('Add image')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: originalScale == null
+                      ? null
+                      : () => _importScaleChords(originalScale),
+                  icon: const Icon(Icons.library_add_outlined),
+                  label: Text(context.t('Import original scale')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: myScale == null
+                      ? null
+                      : () => _importScaleChords(myScale),
+                  icon: const Icon(Icons.library_add_check_outlined),
+                  label: Text(context.t('Import my scale')),
                 ),
               ],
             ),
@@ -1088,6 +1119,43 @@ class _SongChordItemDialogState extends State<_SongChordItemDialog> {
     }
   }
 
+  MusicalScale? _scaleFor(String? value) {
+    if (value == null) {
+      return null;
+    }
+    final normalized = value.trim().toLowerCase();
+    for (final scale in widget.availableScales) {
+      if (scale.displayName.toLowerCase() == normalized &&
+          scale.chordTutorials.isNotEmpty) {
+        return scale;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _importScaleChords(MusicalScale scale) async {
+    final result = await showDialog<List<ChordTutorial>>(
+      context: context,
+      builder: (context) => _ScaleChordImportDialog(scale: scale),
+    );
+    if (result == null || result.isEmpty) {
+      return;
+    }
+    setState(() {
+      for (final chord in result) {
+        final chordId = chord.id;
+        final exists = _chords.any(
+          (selection) => chordId != null
+              ? selection.chord.id == chordId
+              : selection.chord == chord,
+        );
+        if (!exists) {
+          _chords.add(SongChordSelection(chord: chord));
+        }
+      }
+    });
+  }
+
   Future<void> _addImage() async {
     final image = await widget.onPickImage();
     if (image == null) {
@@ -1101,6 +1169,82 @@ class _SongChordItemDialogState extends State<_SongChordItemDialog> {
         ),
       );
     });
+  }
+}
+
+class _ScaleChordImportDialog extends StatefulWidget {
+  const _ScaleChordImportDialog({required this.scale});
+
+  final MusicalScale scale;
+
+  @override
+  State<_ScaleChordImportDialog> createState() =>
+      _ScaleChordImportDialogState();
+}
+
+class _ScaleChordImportDialogState extends State<_ScaleChordImportDialog> {
+  late final Set<ChordTutorial> _selected = {...widget.scale.chordTutorials};
+
+  @override
+  Widget build(BuildContext context) {
+    final chords = widget.scale.chordTutorials;
+    return AlertDialog(
+      title: Text(
+        context.t(
+          'Import chords from {scale}',
+          {'scale': widget.scale.displayName},
+        ),
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 420,
+        child: chords.isEmpty
+            ? Center(child: Text(context.t('No chords selected')))
+            : ListView.builder(
+                itemCount: chords.length,
+                itemBuilder: (context, index) {
+                  final chord = chords[index];
+                  return CheckboxListTile(
+                    value: _selected.contains(chord),
+                    secondary: TutorialThumbnail(
+                      path: chord.imagePath,
+                      fallbackIcon: Icons.piano_outlined,
+                    ),
+                    title: Text(chord.displayName),
+                    subtitle: Text(
+                      chord.keys,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onChanged: (checked) {
+                      setState(() {
+                        if (checked ?? false) {
+                          _selected.add(chord);
+                        } else {
+                          _selected.remove(chord);
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.t('Cancel')),
+        ),
+        FilledButton(
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.of(context).pop([
+                    for (final chord in chords)
+                      if (_selected.contains(chord)) chord,
+                  ]),
+          child: Text(context.t('Import')),
+        ),
+      ],
+    );
   }
 }
 
@@ -1473,7 +1617,6 @@ class _OptionalFields extends StatelessWidget {
     required this.myScale,
     required this.scaleValues,
     required this.originalStartingKey,
-    required this.bpmController,
     required this.onOriginalScaleChanged,
     required this.onMyScaleChanged,
     required this.onOriginalStartingKeyChanged,
@@ -1483,7 +1626,6 @@ class _OptionalFields extends StatelessWidget {
   final String? myScale;
   final List<String> scaleValues;
   final String? originalStartingKey;
-  final TextEditingController bpmController;
   final ValueChanged<String?> onOriginalScaleChanged;
   final ValueChanged<String?> onMyScaleChanged;
   final ValueChanged<String?> onOriginalStartingKeyChanged;
@@ -1514,13 +1656,6 @@ class _OptionalFields extends StatelessWidget {
           value: originalStartingKey,
           values: MusicKeys.values,
           onChanged: onOriginalStartingKeyChanged,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: bpmController,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(labelText: context.t('BPM')),
-          validator: (value) => SongValidation.optionalInt(value, 'BPM'),
         ),
       ],
     );
@@ -1598,7 +1733,7 @@ class _RhythmItemEditor extends StatelessWidget {
             ListTile(
               leading: CircleAvatar(child: Text('${i + 1}')),
               title: Text(rhythmItems[i].summary),
-              subtitle: i == 0 ? Text(context.t('Primary')) : null,
+              subtitle: _rhythmItemSubtitle(context, rhythmItems[i], i),
               trailing: Wrap(
                 spacing: 4,
                 children: [
@@ -1635,27 +1770,38 @@ class _RhythmItemEditor extends StatelessWidget {
     onChanged(_reposition(next));
   }
 
+  Widget? _rhythmItemSubtitle(
+    BuildContext context,
+    RhythmItem item,
+    int index,
+  ) {
+    final parts = [
+      if (index == 0) context.t('Primary'),
+      if (item.bpm != null) '${item.bpm} BPM',
+    ];
+    if (parts.isEmpty) {
+      return null;
+    }
+    return Text(parts.join(' - '));
+  }
+
   Future<void> _editItem(BuildContext context, {int? index}) async {
-    final current =
-        index == null ? const <Rhythm>[] : rhythmItems[index].rhythms;
-    final selected = await showDialog<List<Rhythm>>(
+    final current = index == null ? const RhythmItem() : rhythmItems[index];
+    final selected = await showDialog<RhythmItem>(
       context: context,
       builder: (context) {
         return _RhythmItemDialog(
           availableRhythms: availableRhythms,
-          selectedRhythms: current,
+          item: current,
           onCreate: onCreate,
         );
       },
     );
-    if (selected == null || selected.isEmpty) {
+    if (selected == null || selected.rhythms.isEmpty) {
       return;
     }
     final next = [...rhythmItems];
-    final item = RhythmItem(
-      position: index ?? next.length,
-      rhythms: selected,
-    );
+    final item = selected.copyWith(position: index ?? next.length);
     if (index == null) {
       next.add(item);
     } else {
@@ -1674,12 +1820,12 @@ class _RhythmItemEditor extends StatelessWidget {
 class _RhythmItemDialog extends StatefulWidget {
   const _RhythmItemDialog({
     required this.availableRhythms,
-    required this.selectedRhythms,
+    required this.item,
     required this.onCreate,
   });
 
   final List<Rhythm> availableRhythms;
-  final List<Rhythm> selectedRhythms;
+  final RhythmItem item;
   final VoidCallback onCreate;
 
   @override
@@ -1687,7 +1833,16 @@ class _RhythmItemDialog extends StatefulWidget {
 }
 
 class _RhythmItemDialogState extends State<_RhythmItemDialog> {
-  late final List<Rhythm> _selected = [...widget.selectedRhythms];
+  final _formKey = GlobalKey<FormState>();
+  late final List<Rhythm> _selected = [...widget.item.rhythms];
+  late final TextEditingController _bpmController =
+      TextEditingController(text: widget.item.bpm?.toString() ?? '');
+
+  @override
+  void dispose() {
+    _bpmController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1695,14 +1850,23 @@ class _RhythmItemDialogState extends State<_RhythmItemDialog> {
       title: Text(context.t('Rhythm item')),
       content: SizedBox(
         width: double.maxFinite,
-        child: widget.availableRhythms.isEmpty
-            ? Text(context.t('No rhythms created yet'))
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: widget.availableRhythms.length,
-                itemBuilder: (context, index) {
-                  final rhythm = widget.availableRhythms[index];
-                  return CheckboxListTile(
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              TextFormField(
+                controller: _bpmController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(labelText: context.t('BPM')),
+                validator: (value) => SongValidation.optionalInt(value, 'BPM'),
+              ),
+              const SizedBox(height: 12),
+              if (widget.availableRhythms.isEmpty)
+                Text(context.t('No rhythms created yet'))
+              else
+                for (final rhythm in widget.availableRhythms)
+                  CheckboxListTile(
                     value: _selected.contains(rhythm),
                     title: Text(rhythm.rhythmName),
                     subtitle:
@@ -1716,9 +1880,10 @@ class _RhythmItemDialogState extends State<_RhythmItemDialog> {
                         }
                       });
                     },
-                  );
-                },
-              ),
+                  ),
+            ],
+          ),
+        ),
       ),
       actions: [
         TextButton.icon(
@@ -1736,7 +1901,17 @@ class _RhythmItemDialogState extends State<_RhythmItemDialog> {
         FilledButton(
           onPressed: _selected.isEmpty
               ? null
-              : () => Navigator.of(context).pop(_selected),
+              : () {
+                  if (!_formKey.currentState!.validate()) {
+                    return;
+                  }
+                  Navigator.of(context).pop(
+                    RhythmItem(
+                      bpm: int.tryParse(_bpmController.text.trim()),
+                      rhythms: _selected,
+                    ),
+                  );
+                },
           child: Text(context.t('Apply')),
         ),
       ],

@@ -82,6 +82,24 @@ class Song {
     return summary.isNotEmpty ? summary : primaryRhythm?.trim() ?? '';
   }
 
+  int? get primaryBpm {
+    if (rhythmItems.isNotEmpty) {
+      return rhythmItems.first.bpm ?? bpm;
+    }
+    return bpm;
+  }
+
+  List<int> get bpmValues {
+    final values = [
+      for (final item in rhythmItems)
+        if (item.bpm != null) item.bpm!,
+    ];
+    if (values.isEmpty && bpm != null) {
+      values.add(bpm!);
+    }
+    return values;
+  }
+
   String get linkedChordSummary {
     final selections = chordItems.expand((item) => item.chords);
     if (selections.isNotEmpty) {

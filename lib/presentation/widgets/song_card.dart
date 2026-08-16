@@ -112,8 +112,9 @@ class SongCard extends StatelessWidget {
               icon: Icons.timer_outlined, label: song.rhythmSummary);
         }
       case SongCardField.bpm:
-        if (song.bpm != null) {
-          yield _InfoChip(icon: Icons.speed, label: '${song.bpm} BPM');
+        final bpm = song.primaryBpm;
+        if (bpm != null) {
+          yield _InfoChip(icon: Icons.speed, label: '$bpm BPM');
         }
       case SongCardField.quarterTone:
         if (song.hasQuarterTones) {

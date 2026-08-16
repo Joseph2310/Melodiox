@@ -10,6 +10,7 @@ import 'package:personal_hymns_library/domain/entities/rhythm.dart';
 import 'package:personal_hymns_library/domain/entities/rhythm_item.dart';
 import 'package:personal_hymns_library/domain/entities/song.dart';
 import 'package:personal_hymns_library/domain/entities/song_filter.dart';
+import 'package:personal_hymns_library/domain/entities/song_sort.dart';
 import 'package:personal_hymns_library/domain/entities/tag.dart';
 import 'package:personal_hymns_library/domain/repositories/chord_tutorial_repository.dart';
 import 'package:personal_hymns_library/domain/repositories/circle_tutorial_repository.dart';
@@ -38,6 +39,30 @@ void main() {
     provider.setSearchQuery('c maj');
 
     expect(provider.visibleSongs.map((song) => song.name), ['Amazing Grace']);
+  });
+
+  test('main search keeps filters and pauses active sorting', () async {
+    final provider = _buildProvider();
+
+    await provider.load();
+    provider.setSort(
+      const SongSort(direction: SortDirection.descending),
+    );
+    expect(provider.visibleSongs.map((song) => song.name), [
+      'Holy, Holy, Holy',
+      'Amazing Grace',
+    ]);
+    provider.setSearchQuery('h');
+    expect(provider.visibleSongs.map((song) => song.name), [
+      'Amazing Grace',
+      'Holy, Holy, Holy',
+    ]);
+
+    provider.setFilter(const SongFilter(completed: true));
+
+    expect(provider.visibleSongs.map((song) => song.name), [
+      'Amazing Grace',
+    ]);
   });
 
   test('filters favorites and toggles favorite state', () async {
@@ -69,6 +94,15 @@ void main() {
 
     expect(
         provider.visibleSongs.map((song) => song.name), ['Holy, Holy, Holy']);
+  });
+
+  test('filters bpm from rhythm items', () async {
+    final provider = _buildProvider();
+
+    await provider.load();
+    provider.setFilter(const SongFilter(minBpm: 80, maxBpm: 90));
+
+    expect(provider.visibleSongs.map((song) => song.name), ['Amazing Grace']);
   });
 }
 
@@ -103,6 +137,7 @@ class _FakeSongRepository implements SongRepository {
       quarterTones: const ['None'],
       rhythmItems: const [
         RhythmItem(
+          bpm: 82,
           rhythms: [Rhythm(id: 1, rhythmName: '3/4 Hymn', isPrimary: true)],
         ),
       ],
@@ -128,6 +163,7 @@ class _FakeSongRepository implements SongRepository {
       quarterTones: const [],
       rhythmItems: const [
         RhythmItem(
+          bpm: 72,
           rhythms: [Rhythm(id: 2, rhythmName: '4/4 Ballad', isPrimary: true)],
         ),
       ],

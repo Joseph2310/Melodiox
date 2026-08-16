@@ -13,7 +13,7 @@ class DatabaseSchema {
   const DatabaseSchema._();
 
   static const databaseName = 'personal_hymns_library.db';
-  static const version = 20;
+  static const version = 21;
 
   static Future<void> reset(Database db) async {
     final batch = db.batch();
@@ -149,6 +149,13 @@ class DatabaseSchema {
     if (oldVersion < 20) {
       await _ensureLyricsLibrarySlideCountColumn(db);
     }
+    if (oldVersion < 21) {
+      await _ensureRhythmItemBpmColumn(db);
+      await _migrateSongBpmToRhythmItems(db);
+      await _seedDefaultScales(db, replaceDetails: true);
+      await _seedDefaultScaleChords(db);
+      await _reorderDefaultScaleChords(db);
+    }
   }
 
   static Future<void> create(Database db) async {
@@ -215,6 +222,7 @@ class DatabaseSchema {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         songId INTEGER NOT NULL,
         position INTEGER NOT NULL DEFAULT 0,
+        bpm INTEGER,
         FOREIGN KEY (songId) REFERENCES songs(id) ON DELETE CASCADE
       )
     ''');
@@ -618,8 +626,8 @@ class DatabaseSchema {
       await _insertSongTag(txn, amazingGrace, worshipTag);
       await _insertSongTag(txn, holyHoly, rehearsalTag);
 
-      await _insertRhythmItem(txn, amazingGrace, [hymnRhythm], 0);
-      await _insertRhythmItem(txn, holyHoly, [balladRhythm], 0);
+      await _insertRhythmItem(txn, amazingGrace, [hymnRhythm], 0, bpm: 82);
+      await _insertRhythmItem(txn, holyHoly, [balladRhythm], 0, bpm: 72);
 
       final playlistId = await txn.insert('playlists', {
         'playlistName': 'Sunday Set',
@@ -814,6 +822,87 @@ class DatabaseSchema {
         whereArgs: [id],
       );
     }
+  }
+
+  static Future<void> _ensureRhythmItemBpmColumn(DatabaseExecutor db) async {
+    if (!await _tableHasColumn(db, 'song_rhythm_items', 'bpm')) {
+      await db.execute('ALTER TABLE song_rhythm_items ADD COLUMN bpm INTEGER');
+    }
+  }
+
+  static Future<void> _migrateSongBpmToRhythmItems(DatabaseExecutor db) async {
+    final rows = await db.query(
+      'songs',
+      columns: ['id', 'bpm', 'primaryRhythm'],
+      where: 'bpm IS NOT NULL',
+    );
+    for (final row in rows) {
+      final songId = row['id'] as int?;
+      final bpm = row['bpm'] as int?;
+      if (songId == null || bpm == null) {
+        continue;
+      }
+      final itemRows = await db.query(
+        'song_rhythm_items',
+        columns: ['id', 'bpm'],
+        where: 'songId = ?',
+        whereArgs: [songId],
+        orderBy: 'position ASC, id ASC',
+        limit: 1,
+      );
+      if (itemRows.isNotEmpty) {
+        final itemId = itemRows.first['id'] as int?;
+        if (itemId != null && itemRows.first['bpm'] == null) {
+          await db.update(
+            'song_rhythm_items',
+            {'bpm': bpm},
+            where: 'id = ?',
+            whereArgs: [itemId],
+          );
+        }
+        continue;
+      }
+
+      final rhythmName = (row['primaryRhythm'] as String?)?.trim();
+      if (rhythmName == null || rhythmName.isEmpty) {
+        continue;
+      }
+      final rhythmId = await _ensureRhythmByName(db, rhythmName);
+      final itemId = await db.insert('song_rhythm_items', {
+        'songId': songId,
+        'position': 0,
+        'bpm': bpm,
+      });
+      await db.insert(
+        'song_rhythm_item_rhythms',
+        {
+          'itemId': itemId,
+          'rhythmId': rhythmId,
+          'position': 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+  }
+
+  static Future<int> _ensureRhythmByName(
+    DatabaseExecutor db,
+    String rhythmName,
+  ) async {
+    final name = rhythmName.trim();
+    await db.insert(
+      'rhythms',
+      {'rhythmName': name, 'section': null},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    final rows = await db.query(
+      'rhythms',
+      columns: ['id'],
+      where: 'rhythmName = ?',
+      whereArgs: [name],
+      limit: 1,
+    );
+    return rows.single['id'] as int;
   }
 
   static int _lyricsSlideCountFromPayload(Object? value) {
@@ -1113,6 +1202,51 @@ class DatabaseSchema {
     }
   }
 
+  static Future<void> _reorderDefaultScaleChords(DatabaseExecutor db) async {
+    for (final scale in DefaultScaleCatalog.definitions) {
+      final scaleId = await _scaleId(db, scale.name, scale.type);
+      if (scaleId == null) {
+        continue;
+      }
+      final desiredIds = <int>[];
+      for (final chord in _defaultScaleChordDefinitions(scale)) {
+        final chordId = await _chordTutorialId(db, chord.name, chord.type);
+        if (chordId != null) {
+          desiredIds.add(chordId);
+        }
+      }
+      if (desiredIds.isEmpty) {
+        continue;
+      }
+      final existingRows = await db.query(
+        'scale_chord_tutorials',
+        columns: ['chordTutorialId'],
+        where: 'scaleId = ?',
+        whereArgs: [scaleId],
+        orderBy: 'position ASC',
+      );
+      final existingIds = [
+        for (final row in existingRows)
+          if (row['chordTutorialId'] != null) row['chordTutorialId'] as int,
+      ];
+      if (existingIds.length != desiredIds.length) {
+        continue;
+      }
+      final existingSet = existingIds.toSet();
+      if (!desiredIds.every(existingSet.contains)) {
+        continue;
+      }
+      for (var index = 0; index < desiredIds.length; index++) {
+        await db.update(
+          'scale_chord_tutorials',
+          {'position': index},
+          where: 'scaleId = ? AND chordTutorialId = ?',
+          whereArgs: [scaleId, desiredIds[index]],
+        );
+      }
+    }
+  }
+
   static List<({String name, String type})> _defaultScaleChordDefinitions(
     DefaultScaleDefinition scale,
   ) {
@@ -1144,14 +1278,36 @@ class DatabaseSchema {
     final rootIndex = chromatic.indexOf(scale.name);
     final effectiveRootIndex =
         rootIndex >= 0 ? rootIndex : _sharpChromatic.indexOf(scale.name);
-    return [
+    final definitions = [
       for (var i = 0; i < intervals.length; i++)
         (
           name:
               chromatic[(effectiveRootIndex + intervals[i]) % chromatic.length],
           type: chordTypes[i],
+          index: i,
         ),
     ];
+    definitions.sort((a, b) {
+      final typeComparison =
+          _scaleChordTypeOrder(a.type).compareTo(_scaleChordTypeOrder(b.type));
+      if (typeComparison != 0) {
+        return typeComparison;
+      }
+      return a.index.compareTo(b.index);
+    });
+    return [
+      for (final definition in definitions)
+        (name: definition.name, type: definition.type),
+    ];
+  }
+
+  static int _scaleChordTypeOrder(String type) {
+    return switch (type) {
+      'Major' => 0,
+      'Minor' => 1,
+      'Diminished' => 2,
+      _ => 3,
+    };
   }
 
   static bool _preferFlatScaleNames(String root, String type) {
@@ -1652,11 +1808,13 @@ class DatabaseSchema {
     Transaction txn,
     int songId,
     List<int> rhythmIds,
-    int position,
-  ) async {
+    int position, {
+    int? bpm,
+  }) async {
     final itemId = await txn.insert('song_rhythm_items', {
       'songId': songId,
       'position': position,
+      'bpm': bpm,
     });
     for (var index = 0; index < rhythmIds.length; index++) {
       await txn.insert('song_rhythm_item_rhythms', {

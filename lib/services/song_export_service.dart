@@ -171,7 +171,10 @@ class SongExportService {
       if (options.rhythm)
         _ExportColumn('Rhythm', (song) => song.allRhythmsSummary),
       if (options.tempo)
-        _ExportColumn('Tempo', (song) => song.bpm == null ? '' : '${song.bpm}'),
+        _ExportColumn(
+          'Tempo',
+          (song) => song.primaryBpm == null ? '' : '${song.primaryBpm}',
+        ),
       if (options.quarterTones)
         _ExportColumn('Quarter-toned keys', (song) => song.quarterToneSummary),
       if (options.chords)

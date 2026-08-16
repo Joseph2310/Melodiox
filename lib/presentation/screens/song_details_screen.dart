@@ -570,7 +570,7 @@ class _InfoSection extends StatelessWidget {
         _InfoItem('Original Key', song.originalStartingKey!),
       if (song.rhythmSummary.isNotEmpty)
         _InfoItem('Rhythm', song.rhythmSummary),
-      if (song.bpm != null) _InfoItem('BPM', song.bpm.toString()),
+      if (song.primaryBpm != null) _InfoItem('BPM', song.primaryBpm.toString()),
     ];
 
     return Padding(
@@ -662,6 +662,11 @@ class _RhythmDetailsSection extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      if (items[index].bpm != null)
+                        Chip(
+                          avatar: const Icon(Icons.speed, size: 18),
+                          label: Text('${items[index].bpm} BPM'),
+                        ),
                       for (final rhythm in items[index].rhythms)
                         Chip(
                           avatar: const Icon(Icons.music_note, size: 18),

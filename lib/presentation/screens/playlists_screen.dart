@@ -448,8 +448,9 @@ class _PlaylistSongDetails extends StatelessWidget {
           );
         }
       case PlaylistItemField.bpm:
-        if (song.bpm != null) {
-          yield _PlaylistInfoChip(icon: Icons.speed, label: '${song.bpm} BPM');
+        final bpm = song.primaryBpm;
+        if (bpm != null) {
+          yield _PlaylistInfoChip(icon: Icons.speed, label: '$bpm BPM');
         }
       case PlaylistItemField.quarterTone:
         if (song.hasQuarterTones) {

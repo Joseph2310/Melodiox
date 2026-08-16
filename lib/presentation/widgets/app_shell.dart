@@ -22,7 +22,10 @@ class _AppShellState extends State<AppShell> {
   var _selectedIndex = 0;
   final _sectionHistory = <int>[];
   final _sectionBackHandlers = <int, VoidCallback>{};
+  late final PageController _pageController;
   late final List<Widget> _screens;
+  var _programmaticPageChange = false;
+  int? _targetPage;
 
   static const _bottomDestinations = <_ShellDestination>[
     _ShellDestination(
@@ -83,6 +86,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _selectedIndex);
     _screens = [
       HomeScreen(
         onBackHandlerChanged: (handler) => _setSectionBackHandler(0, handler),
@@ -104,6 +108,12 @@ class _AppShellState extends State<AppShell> {
   }
 
   @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: !_canGoBack,
@@ -116,7 +126,13 @@ class _AppShellState extends State<AppShell> {
         body: ShellNavigationScope(
           canGoBack: _canGoBack,
           onBack: _goBack,
-          child: IndexedStack(index: _selectedIndex, children: _screens),
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: _handlePageChanged,
+            children: [
+              for (final screen in _screens) _KeepAlivePage(child: screen),
+            ],
+          ),
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _bottomIndex,
@@ -158,14 +174,14 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _selectDestination(int value) {
+    if (value == _selectedIndex) {
+      return;
+    }
     setState(() {
-      if (value != _selectedIndex) {
-        _sectionHistory
-          ..remove(value)
-          ..add(_selectedIndex);
-      }
+      _recordSectionHistory(value);
       _selectedIndex = value;
     });
+    _animateToPage(value);
   }
 
   void _goBack() {
@@ -177,7 +193,58 @@ class _AppShellState extends State<AppShell> {
     if (_sectionHistory.isEmpty) {
       return;
     }
-    setState(() => _selectedIndex = _sectionHistory.removeLast());
+    final value = _sectionHistory.removeLast();
+    if (value == 0) {
+      _sectionHistory.clear();
+    }
+    setState(() => _selectedIndex = value);
+    _animateToPage(value);
+  }
+
+  void _handlePageChanged(int value) {
+    if (_programmaticPageChange) {
+      if (value == _targetPage) {
+        _finishProgrammaticPageChange();
+      }
+      return;
+    }
+    if (value == _selectedIndex) {
+      return;
+    }
+    setState(() {
+      _recordSectionHistory(value);
+      _selectedIndex = value;
+    });
+  }
+
+  void _recordSectionHistory(int value) {
+    if (value == 0) {
+      _sectionHistory.clear();
+      return;
+    }
+    _sectionHistory
+      ..remove(value)
+      ..add(_selectedIndex);
+  }
+
+  void _animateToPage(int value) {
+    _programmaticPageChange = true;
+    _targetPage = value;
+    _pageController
+        .animateToPage(
+          value,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        )
+        .whenComplete(_finishProgrammaticPageChange);
+  }
+
+  void _finishProgrammaticPageChange() {
+    if (!mounted) {
+      return;
+    }
+    _programmaticPageChange = false;
+    _targetPage = null;
   }
 
   void _setSectionBackHandler(int index, VoidCallback? handler) {
@@ -191,6 +258,27 @@ class _AppShellState extends State<AppShell> {
         _sectionBackHandlers[index] = handler;
       }
     });
+  }
+}
+
+class _KeepAlivePage extends StatefulWidget {
+  const _KeepAlivePage({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
+}
+
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }
 

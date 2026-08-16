@@ -61,7 +61,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final selectionMode = _selectedSongIds.isNotEmpty;
         return Scaffold(
           appBar: AppBar(
-            leading: selectionMode ? null : ShellBackButton.leading(context),
+            leading: selectionMode || !widget.favoritesOnly
+                ? null
+                : ShellBackButton.leading(context),
             title: Text(
               selectionMode
                   ? context.t(

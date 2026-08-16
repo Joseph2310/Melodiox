@@ -55,7 +55,7 @@ class SongModel {
       'originalScale': _blankToNull(song.originalScale),
       'myScale': _blankToNull(song.myScale),
       'originalStartingKey': _blankToNull(song.originalStartingKey),
-      'bpm': song.bpm,
+      'bpm': song.primaryBpm,
       'lyrics': _blankToNull(song.lyrics),
       'notes': _blankToNull(song.notes),
       'primaryRhythm': _blankToNull(song.primaryRhythm),

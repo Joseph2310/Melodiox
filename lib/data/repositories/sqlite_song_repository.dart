@@ -62,11 +62,15 @@ class SqliteSongRepository implements SongRepository {
           .toList();
       final position =
           song.id == null ? await _nextSongPosition(txn) : song.position;
+      final primaryBpm =
+          song.rhythmItems.isEmpty ? song.bpm : song.rhythmItems.first.bpm;
       final effectiveSong = song.copyWith(
+        bpm: primaryBpm,
         quarterTones: normalizedQuarterTones,
         position: position,
         createdAt: song.id == null ? now : song.createdAt,
         updatedAt: now,
+        clearBpm: primaryBpm == null,
       );
       final row = SongModel.toMap(effectiveSong)..remove('id');
 
@@ -192,6 +196,7 @@ class SqliteSongRepository implements SongRepository {
           id: itemId,
           songId: songId,
           position: itemRow['position'] as int? ?? 0,
+          bpm: itemRow['bpm'] as int?,
           rhythms: rhythms,
         ),
       );
@@ -441,6 +446,7 @@ class SqliteSongRepository implements SongRepository {
       final itemId = await txn.insert('song_rhythm_items', {
         'songId': songId,
         'position': itemIndex,
+        'bpm': item.bpm,
       });
       for (var rhythmIndex = 0;
           rhythmIndex < item.rhythms.length;

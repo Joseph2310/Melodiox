@@ -276,12 +276,15 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   List<Song> _deriveSongs({bool forceFavorites = false}) {
+    final searching = _searchQuery.trim().isNotEmpty;
     final filter =
         forceFavorites ? _filter.copyWith(favoriteOnly: true) : _filter;
     final searched = _songs.where((song) => _matchesSearch(song, _searchQuery));
     final filtered =
         searched.where((song) => _matchesFilter(song, filter)).toList();
-    filtered.sort(_compareSongs);
+    if (!searching) {
+      filtered.sort(_compareSongs);
+    }
     return filtered;
   }
 
@@ -296,10 +299,15 @@ class LibraryProvider extends ChangeNotifier {
     final haystack = _normalize(
       [
         song.name,
+        song.myStartingKey,
+        song.originalStartingKey ?? '',
+        song.originalScale ?? '',
+        song.myScale ?? '',
         song.lyrics ?? '',
         song.notesSummary,
         song.rhythmSummary,
         song.linkedChordSummary,
+        ...song.bpmValues.map((value) => '$value BPM'),
         ...song.tags.map((tag) => tag.name),
         song.quarterToneSummary,
         for (final item in song.rhythmItems)
@@ -357,12 +365,11 @@ class LibraryProvider extends ChangeNotifier {
         song.primaryRhythm != filter.rhythm) {
       return false;
     }
-    if (filter.minBpm != null &&
-        (song.bpm == null || song.bpm! < filter.minBpm!)) {
-      return false;
-    }
-    if (filter.maxBpm != null &&
-        (song.bpm == null || song.bpm! > filter.maxBpm!)) {
+    if ((filter.minBpm != null || filter.maxBpm != null) &&
+        !song.bpmValues.any((value) {
+          return (filter.minBpm == null || value >= filter.minBpm!) &&
+              (filter.maxBpm == null || value <= filter.maxBpm!);
+        })) {
       return false;
     }
     if (filter.transposeValue != null &&
@@ -445,7 +452,7 @@ class LibraryProvider extends ChangeNotifier {
       SongSortField.favoriteFirst => _compareFavorite(a, b),
       SongSortField.rhythm => _compareText(a.rhythmSummary, b.rhythmSummary),
       SongSortField.key => _compareText(a.myStartingKey, b.myStartingKey),
-      SongSortField.bpm => (a.bpm ?? 0).compareTo(b.bpm ?? 0),
+      SongSortField.bpm => (a.primaryBpm ?? 0).compareTo(b.primaryBpm ?? 0),
       SongSortField.tag => _compareText(
           a.tags.map((tag) => tag.name).join(', '),
           b.tags.map((tag) => tag.name).join(', '),
